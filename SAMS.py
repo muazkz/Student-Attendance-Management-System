@@ -4,7 +4,6 @@ import sqlite3
 import csv
 from datetime import date
 
-# ================= DATABASE =================
 conn = sqlite3.connect("attendance.db")
 cursor = conn.cursor()
 
@@ -31,13 +30,11 @@ CREATE TABLE IF NOT EXISTS attendance (
 )
 """)
 
-# default login
 cursor.execute("SELECT * FROM users")
 if not cursor.fetchall():
     cursor.execute("INSERT INTO users VALUES ('admin', 'admin')")
 conn.commit()
 
-# ================= LOGIN =================
 def login():
     u = user_entry.get()
     p = pass_entry.get()
@@ -49,7 +46,6 @@ def login():
     else:
         messagebox.showerror("Error", "Invalid login")
 
-# ================= DASHBOARD =================
 def open_dashboard():
     root = tk.Tk()
     root.title("Attendance System Dashboard")
@@ -108,7 +104,6 @@ def open_dashboard():
 
         messagebox.showinfo("Exported", "CSV file created!")
 
-    # UI
     tk.Label(root, text="Student Attendance System", font=("Arial", 18, "bold")).pack(pady=10)
 
     stats_label = tk.Label(root, text="Stats loading...", font=("Arial", 12))
@@ -139,7 +134,6 @@ def open_dashboard():
 
     root.mainloop()
 
-# ================= LOGIN WINDOW =================
 login_window = tk.Tk()
 login_window.title("Login")
 login_window.geometry("300x200")
