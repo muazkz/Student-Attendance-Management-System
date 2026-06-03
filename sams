@@ -1,7 +1,68 @@
-testing testing
-one two one two
-woiii
-farish barua
-MU BEBANNNNN NJIR
-liverpool noob
-iroala bingai
+# Student Attendance Management System
+
+attendance = {}
+
+def add_student():
+    name = input("Enter student name: ")
+    attendance[name] = []
+    print(f"{name} added successfully.\n")
+
+def mark_attendance():
+    name = input("Enter student name: ")
+    if name in attendance:
+        status = input("Present (P) / Absent (A): ").upper()
+        attendance[name].append(status)
+        print("Attendance marked successfully.\n")
+    else:
+        print("Student not found.\n")
+
+def view_records():
+    if not attendance:
+        print("No records available.\n")
+        return
+
+    print("\nAttendance Records")
+    print("-" * 30)
+    for student, records in attendance.items():
+        print(f"{student}: {records}")
+    print()
+
+def generate_report():
+    print("\nAttendance Report")
+    print("-" * 30)
+    for student, records in attendance.items():
+        total = len(records)
+        present = records.count("P")
+        absent = records.count("A")
+
+        percentage = (present / total * 100) if total > 0 else 0
+
+        print(f"Student: {student}")
+        print(f"Present: {present}")
+        print(f"Absent: {absent}")
+        print(f"Attendance Percentage: {percentage:.2f}%")
+        print("-" * 30)
+
+while True:
+    print("===== Student Attendance Management System =====")
+    print("1. Add Student")
+    print("2. Mark Attendance")
+    print("3. View Records")
+    print("4. Generate Report")
+    print("5. Exit")
+
+    choice = input("Enter your choice: ")
+
+    if choice == "1":
+        add_student()
+    elif choice == "2":
+        mark_attendance()
+    elif choice == "3":
+        view_records()
+    elif choice == "4":
+        generate_report()
+    elif choice == "5":
+        print("Exiting system...")
+        break
+    else:
+        print("Invalid choice. Try again.\n")
