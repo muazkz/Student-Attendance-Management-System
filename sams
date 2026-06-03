@@ -1,35 +1,46 @@
-# Student Attendance Management System
+import tkinter as tk
+from tkinter import messagebox
 
 attendance = {}
 
 def add_student():
-    name = input("Enter student name: ")
-    attendance[name] = []
-    print(f"{name} added successfully.\n")
+    name = student_entry.get().strip()
 
-def mark_attendance():
-    name = input("Enter student name: ")
-    if name in attendance:
-        status = input("Present (P) / Absent (A): ").upper()
-        attendance[name].append(status)
-        print("Attendance marked successfully.\n")
-    else:
-        print("Student not found.\n")
-
-def view_records():
-    if not attendance:
-        print("No records available.\n")
+    if not name:
+        messagebox.showerror("Error", "Please enter a student name.")
         return
 
-    print("\nAttendance Records")
-    print("-" * 30)
-    for student, records in attendance.items():
-        print(f"{student}: {records}")
-    print()
+    if name not in attendance:
+        attendance[name] = []
+        update_listbox()
+        student_entry.delete(0, tk.END)
+        messagebox.showinfo("Success", f"{name} added successfully!")
+    else:
+        messagebox.showwarning("Warning", "Student already exists.")
 
-def generate_report():
-    print("\nAttendance Report")
-    print("-" * 30)
+def mark_present():
+    selected = student_list.curselection()
+
+    if selected:
+        student = student_list.get(selected[0])
+        attendance[student].append("P")
+        messagebox.showinfo("Success", f"{student} marked Present.")
+    else:
+        messagebox.showerror("Error", "Select a student first.")
+
+def mark_absent():
+    selected = student_list.curselection()
+
+    if selected:
+        student = student_list.get(selected[0])
+        attendance[student].append("A")
+        messagebox.showinfo("Success", f"{student} marked Absent.")
+    else:
+        messagebox.showerror("Error", "Select a student first.")
+
+def view_report():
+    report_text.delete(1.0, tk.END)
+
     for student, records in attendance.items():
         total = len(records)
         present = records.count("P")
@@ -37,32 +48,77 @@ def generate_report():
 
         percentage = (present / total * 100) if total > 0 else 0
 
-        print(f"Student: {student}")
-        print(f"Present: {present}")
-        print(f"Absent: {absent}")
-        print(f"Attendance Percentage: {percentage:.2f}%")
-        print("-" * 30)
+        report_text.insert(
+            tk.END,
+            f"Student: {student}\n"
+            f"Present: {present}\n"
+            f"Absent: {absent}\n"
+            f"Attendance: {percentage:.2f}%\n"
+            f"{'-'*30}\n"
+        )
 
-while True:
-    print("===== Student Attendance Management System =====")
-    print("1. Add Student")
-    print("2. Mark Attendance")
-    print("3. View Records")
-    print("4. Generate Report")
-    print("5. Exit")
+def update_listbox():
+    student_list.delete(0, tk.END)
 
-    choice = input("Enter your choice: ")
+    for student in attendance:
+        student_list.insert(tk.END, student)
 
-    if choice == "1":
-        add_student()
-    elif choice == "2":
-        mark_attendance()
-    elif choice == "3":
-        view_records()
-    elif choice == "4":
-        generate_report()
-    elif choice == "5":
-        print("Exiting system...")
-        break
-    else:
-        print("Invalid choice. Try again.\n")
+# Main Window
+root = tk.Tk()
+root.title("Student Attendance Management System")
+root.geometry("700x500")
+
+# Title
+title = tk.Label(
+    root,
+    text="Student Attendance Management System",
+    font=("Arial", 16, "bold")
+)
+title.pack(pady=10)
+
+# Add Student Frame
+frame = tk.Frame(root)
+frame.pack(pady=10)
+
+student_entry = tk.Entry(frame, width=30)
+student_entry.pack(side=tk.LEFT, padx=5)
+
+add_btn = tk.Button(frame, text="Add Student", command=add_student)
+add_btn.pack(side=tk.LEFT)
+
+# Student List
+student_list = tk.Listbox(root, width=40, height=10)
+student_list.pack(pady=10)
+
+# Attendance Buttons
+btn_frame = tk.Frame(root)
+btn_frame.pack()
+
+present_btn = tk.Button(
+    btn_frame,
+    text="Mark Present",
+    bg="lightgreen",
+    command=mark_present
+)
+present_btn.pack(side=tk.LEFT, padx=10)
+
+absent_btn = tk.Button(
+    btn_frame,
+    text="Mark Absent",
+    bg="salmon",
+    command=mark_absent
+)
+absent_btn.pack(side=tk.LEFT, padx=10)
+
+report_btn = tk.Button(
+    btn_frame,
+    text="Generate Report",
+    command=view_report
+)
+report_btn.pack(side=tk.LEFT, padx=10)
+
+# Report Area
+report_text = tk.Text(root, width=70, height=12)
+report_text.pack(pady=15)
+
+root.mainloop()
