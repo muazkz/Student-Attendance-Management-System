@@ -29,7 +29,7 @@ class AttendanceSystem:
         
         Label(
             title_frame, 
-            text="⚡ STUDENT ATTENDANCE MANAGEMENT SYSTEM (CLICK ROW FOR PHOTO POPUP)", 
+            text="⚡ STUDENT ATTENDANCE MANAGEMENT SYSTEM UMPSA", 
             font=("Arial", 18, "bold"), 
             fg="white", 
             bg="#4b7bec"
