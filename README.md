@@ -9,5 +9,6 @@ By automating the attendance process, the Student Attendance Management System i
 <img width="1002" height="732" alt="Screenshot 2026-06-17 203805" src="https://github.com/user-attachments/assets/bd10457a-b0a9-4478-9321-c8626e611d2c" />
 <img width="1002" height="732" alt="Screenshot 2026-06-17 203822" src="https://github.com/user-attachments/assets/f5d03282-e4f2-4891-80bb-c372778edc88" />
 
-THEME
+
+# THEME
 <img width="1002" height="732" alt="BLUE" src="https://github.com/user-attachments/assets/a20a9b14-55d7-48b2-ad8f-f94de9b1446c" />
