@@ -1,382 +1,286 @@
-import os
-import sqlite3
-import csv
-from datetime import datetime
 from tkinter import *
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
+import sqlite3
+from datetime import datetime
 
-class AttendanceSystem:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Student Attendance Management System")
-        self.root.geometry("1150x720")
-        self.root.config(bg="#f4f6f9")
-        
-        self.db_name = "attendance.db"
-        self.selected_photo_path = "" 
-        self.init_database()
+# ================= INITIALIZE DATABASE =================
+conn = sqlite3.connect("school_attendance.db")
+c = conn.cursor()
 
-        # Configure TTK styles
-        self.style = ttk.Style()
-        self.style.theme_use("clam")
-        self.style.configure("Treeview", rowheight=35, font=("Arial", 10)) 
-        self.style.configure("Treeview.Heading", font=("Arial", 10, "bold"), background="#d1d8e0")
-        
-        # ================= TITLE BANNER =================
-        title_frame = Frame(self.root, bg="#4b7bec", height=70)
-        title_frame.pack(fill=X, side=TOP)
-        title_frame.pack_propagate(False)
-        
-        Label(
-            title_frame, 
-            text="⚡ STUDENT ATTENDANCE MANAGEMENT SYSTEM UMPSA", 
-            font=("Arial", 18, "bold"), 
-            fg="white", 
-            bg="#4b7bec"
-        ).pack(side=LEFT, padx=20, pady=15)
+# Jadual 1: Senarai Induk Pelajar
+c.execute("""
+CREATE TABLE IF NOT EXISTS students(
+    student_id TEXT PRIMARY KEY,
+    student_name TEXT
+)
+""")
 
-        # ================= MAIN CONTENT SPLIT =================
-        main_body = Frame(self.root, bg="#f4f6f9")
-        main_body.pack(fill=BOTH, expand=True, padx=20, pady=15)
+# Jadual 2: Rekod Kehadiran Harian
+c.execute("""
+CREATE TABLE IF NOT EXISTS attendance(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT,
+    student_id TEXT,
+    status TEXT,
+    FOREIGN KEY(student_id) REFERENCES students(student_id) ON DELETE CASCADE
+)
+""")
+conn.commit()
 
-        # Left Column: Controls (Inputs, Photo Upload & Search)
-        left_panel = Frame(main_body, bg="#f4f6f9", width=420)
-        left_panel.pack(side=LEFT, fill=Y, padx=(0, 10))
-        left_panel.pack_propagate(False)
 
-        # Right Column: Records, Stats & Treeview Grid
-        right_panel = Frame(main_body, bg="#f4f6f9")
-        right_panel.pack(side=RIGHT, fill=BOTH, expand=True)
+# ================= FUNCTIONS: TAB 1 (MANAGE STUDENTS) =================
+def add_student():
+    s_id = txt_stu_id.get().strip()
+    name = txt_stu_name.get().strip()
 
-        # ================= 1. INPUT FORM FRAME =================
-        form_frame = LabelFrame(left_panel, text=" Attendance Logging ", font=("Arial", 10, "bold"), bg="white", bd=2, relief=GROOVE)
-        form_frame.pack(fill=X, pady=(0, 15), ipady=10)
+    if not s_id or not name:
+        messagebox.showerror("Error", "Please fill in both Student ID and Name")
+        return
 
-        Label(form_frame, text="Student ID *", bg="white", font=("Arial", 10)).grid(row=0, column=0, padx=15, pady=8, sticky=W)
-        self.txt_id = Entry(form_frame, font=("Arial", 10), width=22)
-        self.txt_id.grid(row=0, column=1, padx=10, pady=8)
+    try:
+        c.execute("INSERT INTO students VALUES (?, ?)", (s_id, name))
+        conn.commit()
+        messagebox.showinfo("Success", f"Added {name} to the class roster.")
+        txt_stu_id.delete(0, END)
+        txt_stu_name.delete(0, END)
+        show_students_roster()
+    except sqlite3.IntegrityError:
+        messagebox.showerror("Error", f"Student ID '{s_id}' already exists!")
 
-        Label(form_frame, text="Student Name *", bg="white", font=("Arial", 10)).grid(row=1, column=0, padx=15, pady=8, sticky=W)
-        self.txt_name = Entry(form_frame, font=("Arial", 10), width=22)
-        self.txt_name.grid(row=1, column=1, padx=10, pady=8)
 
-        Label(form_frame, text="Status", bg="white", font=("Arial", 10)).grid(row=2, column=0, padx=15, pady=8, sticky=W)
-        self.status_var = StringVar(value="Present")
-        status_options = ["Present", "Absent", "Late", "Excused"]
-        status_menu = ttk.OptionMenu(form_frame, self.status_var, status_options[0], *status_options)
-        status_menu.grid(row=2, column=1, padx=10, pady=8, sticky=EW)
+def delete_student():
+    selected = tree_students.focus()
+    if not selected:
+        messagebox.showwarning("Warning", "Select a student from the roster to delete")
+        return
+    
+    values = tree_students.item(selected, "values")
+    s_id, name = values[0], values[1]
 
-        # Photo selection row
-        Label(form_frame, text="Photo ID", bg="white", font=("Arial", 10)).grid(row=3, column=0, padx=15, pady=8, sticky=W)
-        photo_btn_frame = Frame(form_frame, bg="white")
-        photo_btn_frame.grid(row=3, column=1, padx=10, pady=8, sticky=W)
-        
-        Button(photo_btn_frame, text="Choose File (PNG/GIF)...", font=("Arial", 9), bg="#d1d8e0", bd=1, command=self.upload_photo).pack(side=LEFT)
-        self.lbl_photo_status = Label(photo_btn_frame, text="No image selected", font=("Arial", 9, "italic"), bg="white", fg="gray")
-        self.lbl_photo_status.pack(side=LEFT, padx=5)
+    if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete {name}?\nThis will also remove their past attendance records."):
+        c.execute("DELETE FROM students WHERE student_id=?", (s_id,))
+        c.execute("DELETE FROM attendance WHERE student_id=?", (s_id,))
+        conn.commit()
+        messagebox.showinfo("Deleted", "Student removed successfully.")
+        show_students_roster()
 
-        # Form Buttons
-        btn_frame = Frame(form_frame, bg="white")
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
-        
-        Button(btn_frame, text="Log Attendance", bg="#20bf6b", fg="white", font=("Arial", 10, "bold"), width=15, bd=0, pady=6, command=self.add_record).pack(side=LEFT, padx=5)
-        Button(btn_frame, text="Clear Entry", bg="#a5b1c2", fg="black", font=("Arial", 10), width=10, bd=0, pady=6, command=self.clear_fields).pack(side=LEFT, padx=5)
 
-        # ================= 2. SEARCH & FILTER FRAME =================
-        search_frame = LabelFrame(left_panel, text=" View Filters ", font=("Arial", 10, "bold"), bg="white", bd=2, relief=GROOVE)
-        search_frame.pack(fill=X, ipady=10)
+def show_students_roster():
+    tree_students.delete(*tree_students.get_children())
+    c.execute("SELECT * FROM students ORDER BY student_id")
+    for row in c.fetchall():
+        tree_students.insert("", END, values=row)
 
-        Label(search_frame, text="Search ID:", bg="white", font=("Arial", 10)).grid(row=0, column=0, padx=15, pady=10, sticky=W)
-        self.txt_search = Entry(search_frame, font=("Arial", 10), width=22)
-        self.txt_search.grid(row=0, column=1, padx=10, pady=10)
 
-        Label(search_frame, text="Target Date:", bg="white", font=("Arial", 10)).grid(row=1, column=0, padx=15, pady=10, sticky=W)
-        self.txt_date = Entry(search_frame, font=("Arial", 10), width=22)
-        self.txt_date.grid(row=1, column=1, padx=10, pady=10)
-        self.txt_date.insert(0, datetime.now().strftime("%Y-%m-%d"))
+# ================= FUNCTIONS: TAB 2 (TAKE ATTENDANCE) =================
+def calculate_percentage():
+    selected_date = txt_date.get().strip()
+    
+    c.execute("SELECT COUNT(*) FROM students")
+    total_students = c.fetchone()[0]
+    
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date=? AND status='Present'", (selected_date,))
+    present = c.fetchone()[0]
+    
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date=? AND status='Absent'", (selected_date,))
+    absent = c.fetchone()[0]
+    
+    percentage = (present / total_students) * 100 if total_students > 0 and (present + absent) > 0 else 0.0
 
-        filter_btn_frame = Frame(search_frame, bg="white")
-        filter_btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
-        
-        Button(filter_btn_frame, text="Apply Filter", bg="#4b7bec", fg="white", font=("Arial", 10), width=12, bd=0, pady=4, command=self.search_data).pack(side=LEFT, padx=5)
-        Button(filter_btn_frame, text="Show All", bg="#718093", fg="white", font=("Arial", 10), width=12, bd=0, pady=4, command=self.refresh_all).pack(side=LEFT, padx=5)
+    lbl_total.config(text=f"Total Class Size: {total_students}")
+    lbl_present.config(text=f"Present Today: {present}")
+    lbl_absent.config(text=f"Absent Today: {absent}")
+    lbl_percentage.config(text=f"Attendance Rate: {percentage:.2f}%")
 
-        # ================= 3. STATS PANEL =================
-        stats_card = Frame(right_panel, bg="white", bd=1, relief=SOLID)
-        stats_card.pack(fill=X, pady=(0, 15), ipady=10)
-        stats_card.grid_columnconfigure((0,1,2,3), weight=1)
-        
-        self.lbl_total = Label(stats_card, text="Total Records\n0", font=("Arial", 11, "bold"), bg="white", fg="#2f3640")
-        self.lbl_total.grid(row=0, column=0, pady=10)
-        
-        self.lbl_present = Label(stats_card, text="Present\n0", font=("Arial", 11, "bold"), bg="white", fg="#20bf6b")
-        self.lbl_present.grid(row=0, column=1, pady=10)
-        
-        self.lbl_late = Label(stats_card, text="Late\n0", font=("Arial", 11, "bold"), bg="white", fg="#f7b731")
-        self.lbl_late.grid(row=0, column=2, pady=10)
-        
-        self.lbl_absent = Label(stats_card, text="Absent\n0", font=("Arial", 11, "bold"), bg="white", fg="#eb3b5a")
-        self.lbl_absent.grid(row=0, column=3, pady=10)
-        
-        self.lbl_percentage = Label(stats_card, text="Attendance Rate: 0.00%", font=("Arial", 12, "bold"), bg="#d1d8e0", fg="#2f3640", padx=15, pady=5)
-        self.lbl_percentage.grid(row=1, column=0, columnspan=4, sticky=EW, padx=20, pady=5)
 
-        # ================= 4. DATA TABLE TREEVIEW =================
-        table_frame = Frame(right_panel, bg="white")
-        table_frame.pack(fill=BOTH, expand=True)
+def load_attendance_by_date():
+    selected_date = txt_date.get().strip()
+    if not selected_date:
+        messagebox.showwarning("Warning", "Please enter a valid date")
+        return
 
-        scrollbar_y = Scrollbar(table_frame, orient=VERTICAL)
-        
-        self.tree = ttk.Treeview(table_frame, columns=("ID", "Date", "StudentID", "Name", "Status", "PhotoPath"), show="headings", yscrollcommand=scrollbar_y.set)
-        scrollbar_y.config(command=self.tree.yview)
-        scrollbar_y.pack(side=RIGHT, fill=Y)
-
-        self.tree.heading("ID", text="Record ID")
-        self.tree.heading("Date", text="Date")
-        self.tree.heading("StudentID", text="Student ID")
-        self.tree.heading("Name", text="Student Name")
-        self.tree.heading("Status", text="Status")
-        self.tree.heading("PhotoPath", text="Photo Location")
-
-        self.tree.column("ID", width=70, anchor=CENTER)
-        self.tree.column("Date", width=110, anchor=CENTER)
-        self.tree.column("StudentID", width=120, anchor=CENTER)
-        self.tree.column("Name", width=220, anchor=W)
-        self.tree.column("Status", width=110, anchor=CENTER)
-        self.tree.column("PhotoPath", width=160, anchor=W)
-        self.tree.pack(fill=BOTH, expand=True)
-
-        # CRITICAL: Bind the row selection click directly to trigger the photo window popup
-        self.tree.bind("<<TreeviewSelect>>", self.popup_student_photo)
-
-        # Lower Action Bar Buttons
-        lower_action_frame = Frame(right_panel, bg="#f4f6f9")
-        lower_action_frame.pack(fill=X, pady=(10, 0))
-
-        Button(lower_action_frame, text="Export CSV Data Sheet", bg="#2d3436", fg="white", font=("Arial", 10, "bold"), bd=0, pady=6, padx=15, command=self.export_csv).pack(side=RIGHT, padx=5)
-        Button(lower_action_frame, text="Delete Selected Row", bg="#eb3b5a", fg="white", font=("Arial", 10, "bold"), bd=0, pady=6, padx=15, command=self.delete_record).pack(side=RIGHT, padx=5)
-
-        # Initialize Grid View Engine
-        self.refresh_all()
-
-    # ================= DATABASE INITIALIZATION =================
-    def init_database(self):
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS attendance(
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT NOT NULL,
-                    student_id TEXT NOT NULL,
-                    student_name TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    photo_path TEXT DEFAULT 'No Image'
-                )
-            """)
-            conn.commit()
-
-    # ================= POPUP ENGINE FUNCTION =================
-    def popup_student_photo(self, event):
-        """Triggers an instantaneous clean popup window presenting the target student's Photo ID."""
-        selected_item = self.tree.focus()
-        if not selected_item:
-            return
-
-        row_values = self.tree.item(selected_item)["values"]
-        student_id = row_values[2]
-        student_name = row_values[3]
-        photo_path = row_values[5]
-
-        # Cancel logic if row contains default text entries or invalid files
-        if photo_path in ["No Image", "No Image File", ""]:
-            return
-
-        if not os.path.exists(photo_path):
-            messagebox.showerror("File Error", f"The image file for {student_name} was moved or deleted from:\n{photo_path}")
-            return
-
-        # Create a clean standalone TopLevel popup window
-        popup = Toplevel(self.root)
-        popup.title(f"Photo ID Profile - {student_id}")
-        popup.geometry("340x400")
-        popup.config(bg="white")
-        popup.resizable(False, False)
-
-        # Force focus onto the popup window instantly
-        popup.grab_set()
-
-        Label(popup, text=f"STUDENT CARD", font=("Arial", 11, "bold"), bg="#4b7bec", fg="white", pady=6).pack(fill=X)
-
-        # Load and render the file object safely inside custom canvas wrapper block
-        try:
-            # We preserve photo storage reference context inside popup so garbage collection won't delete it
-            popup.img = PhotoImage(file=photo_path)
-            
-            canvas = Canvas(popup, width=220, height=220, bg="#f1f2f6", bd=1, relief=SOLID)
-            canvas.pack(pady=20)
-            
-            # Position photo centered exactly inside tracking canvas viewport
-            canvas.create_image(110, 110, image=popup.img, anchor=CENTER)
-            
-        except Exception as err:
-            Label(popup, text="[ Failed to Load Format ]\nOnly standard .png or .gif formats supported.", fg="red", bg="white").pack(pady=40)
-
-        # Profile metadata cards text block layout details base
-        Label(popup, text=f"Name: {student_name}", font=("Arial", 11, "bold"), bg="white", fg="#2f3640").pack(pady=2)
-        Label(popup, text=f"ID Code: {student_id}", font=("Arial", 10), bg="white", fg="#718093").pack(pady=2)
-        
-        Button(popup, text="Close Profile", font=("Arial", 9), bg="#eb3b5a", fg="white", bd=0, padx=10, pady=4, command=popup.destroy).pack(pady=15)
-
-    # ================= AUXILIARY FORM FUNCTIONS =================
-    def upload_photo(self):
-        file_path = filedialog.askopenfilename(
-            title="Select Student Photo Image",
-            filetypes=[("Image Files (PNG/GIF)", "*.png *.gif"), ("All Files", "*.*")]
-        )
-        if file_path:
-            self.selected_photo_path = file_path
-            filename = os.path.basename(file_path)
-            self.lbl_photo_status.config(text=filename[:15] + "..." if len(filename) > 15 else filename, fg="green")
-
-    def refresh_all(self):
-        self.clear_fields()
-        self.txt_search.delete(0, END)
-        self.show_data()
-        self.calculate_stats()
-
-    def clear_fields(self):
-        self.txt_id.delete(0, END)
-        self.txt_name.delete(0, END)
-        self.status_var.set("Present")
-        self.selected_photo_path = ""
-        self.lbl_photo_status.config(text="No image selected", fg="gray")
-
-    def add_record(self):
-        s_id = self.txt_id.get().strip()
-        s_name = self.txt_name.get().strip()
-        s_date = self.txt_date.get().strip()
-        s_status = self.status_var.get()
-        s_photo = self.selected_photo_path if self.selected_photo_path else "No Image File"
-
-        if s_id == "" or s_name == "" or s_date == "":
-            messagebox.showerror("Validation Error", "All primary form rows marked with * must be filled.")
-            return
-
-        try:
-            datetime.strptime(s_date, "%Y-%m-%d")
-        except ValueError:
-            messagebox.showerror("Date Format Error", "Please use YYYY-MM-DD formatting style.")
-            return
-
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("""
-                INSERT INTO attendance(date, student_id, student_name, status, photo_path)
-                VALUES (?, ?, ?, ?, ?)
-            """, (s_date, s_id, s_name, s_status, s_photo))
-            conn.commit()
-
-        messagebox.showinfo("Success", f"Attendance & Photo reference captured for {s_name}!")
-        self.refresh_all()
-
-    def show_data(self, specific_rows=None):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        if specific_rows is None:
-            with sqlite3.connect(self.db_name) as conn:
-                c = conn.cursor()
-                c.execute("SELECT id, date, student_id, student_name, status, photo_path FROM attendance ORDER BY id DESC")
-                specific_rows = c.fetchall()
-
-        for row in specific_rows:
-            self.tree.insert("", END, values=row)
-
-    def search_data(self):
-        keyword = self.txt_search.get().strip()
-        target_date = self.txt_date.get().strip()
-
-        query = "SELECT id, date, student_id, student_name, status, photo_path FROM attendance WHERE 1=1"
-        params = []
-
-        if keyword:
-            query += " AND student_id LIKE ?"
-            params.append(f"%{keyword}%")
-        if target_date:
-            query += " AND date = ?"
-            params.append(target_date)
-
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute(query, params)
-            rows = c.fetchall()
-            
-        self.show_data(specific_rows=rows)
-
-    def delete_record(self):
-        selected = self.tree.focus()
-        if not selected:
-            messagebox.showwarning("Warning", "Select a data entry row to remove first.")
-            return
-
-        confirm = messagebox.askyesno("Confirm Deletion", "Are you sure you want to delete this record entry?")
-        if not confirm:
-            return
-
-        row_data = self.tree.item(selected)["values"]
-        record_id = row_data[0]
-
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM attendance WHERE id = ?", (record_id,))
-            conn.commit()
-
-        messagebox.showinfo("Deleted", "Entry removed from storage successfully.")
-        self.refresh_all()
-
-    def calculate_stats(self):
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM attendance")
-            total = c.fetchone()[0]
-            c.execute("SELECT COUNT(*) FROM attendance WHERE status='Present'")
-            present = c.fetchone()[0]
-            c.execute("SELECT COUNT(*) FROM attendance WHERE status='Late'")
-            late = c.fetchone()[0]
-            c.execute("SELECT COUNT(*) FROM attendance WHERE status='Absent'")
-            absent = c.fetchone()[0]
-
-        rate = ((present + late) / total * 100) if total > 0 else 0.0
-
-        self.lbl_total.config(text=f"Total Records\n{total}")
-        self.lbl_present.config(text=f"Present\n{present}")
-        self.lbl_late.config(text=f"Late\n{late}")
-        self.lbl_absent.config(text=f"Absent\n{absent}")
-        self.lbl_percentage.config(text=f"Attendance Rate: {rate:.2f}%")
-
-    def export_csv(self):
-        with sqlite3.connect(self.db_name) as conn:
-            c = conn.cursor()
-            c.execute("SELECT id, date, student_id, student_name, status, photo_path FROM attendance")
-            rows = c.fetchall()
-
+    tree_attendance.delete(*tree_attendance.get_children())
+    
+    # Semak jika kehadiran untuk tarikh ini sudah wujud
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date=?", (selected_date,))
+    exists = c.fetchone()[0]
+    
+    if exists == 0:
+        # Jika hari baru, bawa masuk senarai pelajar terkini dari Tab 1 (Default: Present)
+        c.execute("SELECT student_id, student_name FROM students ORDER BY student_id")
+        rows = c.fetchall()
         if not rows:
-            messagebox.showwarning("Export Void", "No records found to save.")
+            messagebox.showinfo("Roster Empty", "Please register students in Tab 1 first!")
             return
+        for row in rows:
+            tree_attendance.insert("", END, values=(row[0], row[1], "Present", "New Record"))
+    else:
+        # Jika rekod tarikh ini sudah ada, paparkan data lama untuk diedit/disemak
+        c.execute("""
+            SELECT s.student_id, s.student_name, a.status, a.id 
+            FROM students s
+            JOIN attendance a ON s.student_id = a.student_id
+            WHERE a.date = ? ORDER BY s.student_id
+        """, (selected_date,))
+        for row in c.fetchall():
+            tree_attendance.insert("", END, values=row)
+            
+    calculate_percentage()
 
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("Comma Separated Values", "*.csv")],
-            title="Export Records to CSV"
-        )
-        if file_path:
-            with open(file_path, mode="w", newline="", encoding="utf-8") as file:
-                writer = csv.writer(file)
-                writer.writerow(["Record ID", "Date", "Student ID", "Student Name", "Status", "Photo Location Path"])
-                writer.writerows(rows)
-            messagebox.showinfo("Export Complete", "Data archive written safely!")
 
-if __name__ == "__main__":
-    root = Tk()
-    app = AttendanceSystem(root)
-    root.mainloop()
+def toggle_status(new_status):
+    selected_item = tree_attendance.focus()
+    if not selected_item:
+        messagebox.showwarning("Warning", "Please select a student from the table first")
+        return
+        
+    current_values = list(tree_attendance.item(selected_item, "values"))
+    current_values[2] = new_status  # Ubah status ruangan indeks ke-2
+    tree_attendance.item(selected_item, values=current_values)
+
+
+def save_attendance():
+    selected_date = txt_date.get().strip()
+    items = tree_attendance.get_children()
+    
+    if not items:
+        messagebox.showwarning("Warning", "No data to save. Load a date first.")
+        return
+
+    for item in items:
+        values = tree_attendance.item(item, "values")
+        student_id, status, record_type = values[0], values[2], values[3]
+
+        if record_type == "New Record":
+            c.execute("INSERT INTO attendance (date, student_id, status) VALUES (?, ?, ?)", 
+                      (selected_date, student_id, status))
+        else:
+            c.execute("UPDATE attendance SET status = ? WHERE id = ?", (status, record_type))
+            
+    conn.commit()
+    messagebox.showinfo("Success", f"Attendance roster for {selected_date} saved!")
+    load_attendance_by_date()
+
+
+# ================= GLOBAL CONFIGS =================
+def change_theme(color):
+    root.config(bg=color)
+    title.config(bg=color)
+    style.configure("TNotebook", background=color)
+    style.configure("TFrame", background=color)
+
+
+def on_closing():
+    conn.close()
+    root.destroy()
+
+
+# ================= GUI RECONSTRUCTION =================
+root = Tk()
+root.title("Advanced Student Roster & Attendance System")
+root.geometry("1000x700")
+root.config(bg="lightblue")
+
+style = ttk.Style()
+style.theme_use("clam")
+
+# Main Header
+title = Label(root, text="STUDENT ROSTER & ATTENDANCE MANAGEMENT", font=("Arial", 16, "bold"), bg="lightblue", pady=10)
+title.pack()
+
+# Theme Buttons
+theme_frame = Frame(root)
+theme_frame.pack(pady=5)
+themes = [("Blue", "lightblue"), ("Green", "lightgreen"), ("Pink", "pink"), ("White", "white")]
+for i, (text, col) in enumerate(themes):
+    Button(theme_frame, text=text, command=lambda c=col: change_theme(c)).grid(row=0, column=i, padx=5)
+
+# TABS CONTROLLER (NOTEBOOK)
+notebook = ttk.Notebook(root)
+notebook.pack(fill=BOTH, expand=True, padx=15, pady=10)
+
+tab1 = ttk.Frame(notebook)
+tab2 = ttk.Frame(notebook)
+
+notebook.add(tab1, text="  1. Manage Class Roster (Daftar Pelajar)  ")
+notebook.add(tab2, text="  2. Take Daily Attendance (Ambil Kehadiran)  ")
+
+
+# ================= TAB 1 DESIGN: MANAGE STUDENTS =================
+frame_inputs = Frame(tab1, pady=10)
+frame_inputs.pack()
+
+Label(frame_inputs, text="Student ID:", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky=E)
+txt_stu_id = Entry(frame_inputs, width=20, font=("Arial", 10))
+txt_stu_id.grid(row=0, column=1, padx=5, pady=5)
+
+Label(frame_inputs, text="Full Name:", font=("Arial", 10, "bold")).grid(row=1, column=0, padx=5, pady=5, sticky=E)
+txt_stu_name = Entry(frame_inputs, width=35, font=("Arial", 10))
+txt_stu_name.grid(row=1, column=1, padx=5, pady=5)
+
+btn_add = Button(frame_inputs, text="Add New Student", bg="green", fg="white", font=("Arial", 10, "bold"), command=add_student)
+btn_add.grid(row=2, column=0, columnspan=2, pady=10, ipady=3, sticky=EW)
+
+btn_delete = Button(frame_inputs, text="Remove Selected Student", bg="red", fg="white", font=("Arial", 10), command=delete_student)
+btn_delete.grid(row=3, column=0, columnspan=2, sticky=EW)
+
+# Tab 1 Table (Roster)
+tree_students = ttk.Treeview(tab1, columns=("ID", "Name"), show="headings")
+tree_students.heading("ID", text="Student ID")
+tree_students.heading("Name", text="Student Name")
+tree_students.column("ID", width=200, anchor=CENTER)
+tree_students.column("Name", width=500, anchor=W)
+tree_students.pack(fill=BOTH, expand=True, padx=20, pady=15)
+
+
+# ================= TAB 2 DESIGN: TAKE ATTENDANCE =================
+frame_date = Frame(tab2, pady=10)
+frame_date.pack()
+
+Label(frame_date, text="Select Date (YYYY-MM-DD):", font=("Arial", 11, "bold")).grid(row=0, column=0, padx=5)
+txt_date = Entry(frame_date, font=("Arial", 11), width=15, justify=CENTER)
+txt_date.insert(0, datetime.today().strftime('%Y-%m-%d'))  # Auto-load tarikh hari ini
+txt_date.grid(row=0, column=1, padx=5)
+
+Button(frame_date, text="Load / Refresh Date", bg="blue", fg="white", font=("Arial", 10, "bold"), command=load_attendance_by_date).grid(row=0, column=2, padx=10)
+
+# Attendance Status Toggles
+frame_ctrl = Frame(tab2, pady=5)
+frame_ctrl.pack()
+
+Button(frame_ctrl, text="MARK PRESENT", bg="darkgreen", fg="white", width=15, font=("Arial", 10, "bold"), command=lambda: toggle_status("Present")).grid(row=0, column=0, padx=5)
+Button(frame_ctrl, text="MARK ABSENT", bg="darkred", fg="white", width=15, font=("Arial", 10, "bold"), command=lambda: toggle_status("Absent")).grid(row=0, column=1, padx=5)
+Button(frame_ctrl, text="💾 SAVE ATTENDANCE", bg="orange", fg="black", width=22, font=("Arial", 10, "bold"), command=save_attendance).grid(row=0, column=2, padx=15)
+
+# Stats Tracker
+frame_stats = Frame(tab2)
+frame_stats.pack(pady=5)
+lbl_total = Label(frame_stats, text="Total Class Size: 0", font=("Arial", 10, "bold"))
+lbl_total.grid(row=0, column=0, padx=15)
+lbl_present = Label(frame_stats, text="Present Today: 0", font=("Arial", 10, "bold"), fg="green")
+lbl_present.grid(row=0, column=1, padx=15)
+lbl_absent = Label(frame_stats, text="Absent Today: 0", font=("Arial", 10, "bold"), fg="red")
+lbl_absent.grid(row=0, column=2, padx=15)
+lbl_percentage = Label(tab2, text="Attendance Rate: 0.00%", font=("Arial", 11, "bold"))
+lbl_percentage.pack(pady=2)
+
+# Tab 2 Table (Daily Checker)
+tree_attendance = ttk.Treeview(tab2, columns=("ID", "Name", "Status", "SysID"), show="headings")
+tree_attendance.heading("ID", text="Student ID")
+tree_attendance.heading("Name", text="Student Name")
+tree_attendance.heading("Status", text="Attendance Status")
+tree_attendance.heading("SysID", text="Record Database Key")
+
+tree_attendance.column("ID", width=150, anchor=CENTER)
+tree_attendance.column("Name", width=350, anchor=W)
+tree_attendance.column("Status", width=150, anchor=CENTER)
+tree_attendance.column("SysID", width=120, anchor=CENTER)
+tree_attendance.pack(fill=BOTH, expand=True, padx=20, pady=10)
+
+
+# ================= START APPLICATION =================
+show_students_roster()
+load_attendance_by_date()
+
+root.protocol("WM_DELETE_WINDOW", on_closing)
+root.mainloop()
